@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIChat</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    /* 按鍵樣式變化 */
+    .btn-custom {
+      background-color: #dadada;
+      color: #000;
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    .btn-custom:hover {
+      background-color: #007bff;
+      color: #fff;
+    }
+
+    /* 聊天對話框高度調整 */
+    #chatbox {
+      height: calc(100vh - 250px); /* 调整高度 */
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 聊天輸入欄位向上提升 */
+    .chat-input-container {
+      position: sticky;
+      bottom: 0;
+      background-color: white;
+      padding-top: 10px;
+    }
+
+    /* 调整消息样式 */
+    .message {
+      max-width: 80%;
+      margin-bottom: 10px;
+      padding: 10px;
+      border-radius: 10px;
+    }
+
+    .user-message {
+      align-self: flex-end;
+      background-color: #e6f2ff;
+    }
+
+    .bot-message {
+      align-self: flex-start;
+      background-color: #f0f0f0;
+    }
+
+    /* 添加麦克风图标的动画样式 */
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+    }
+
+    .mic-active {
+      animation: pulse 1s infinite;
+      color: red;
+    }
+
+    #mic-btn i.mic-active {
+      animation: pulse 1s infinite !important;
+      color: red !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header with Logo and Title -->
+  <header class="d-flex justify-content-between align-items-center p-3 bg-light">
+    <img src="./imgs/chat-bot.png" alt="Project Logo" style="height: 80px;">
+    <h1 class="text-center flex-grow-1" style="font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif, sans-serif; color: rgb(102, 0, 255);">AI-Sprite Chatbot</h1>
+  </header>
+
+  <!-- Main Content -->
+  <div class="container-fluid mt-4">
+    <div class="row">
+
+      <!-- Left Column (1/5 for buttons) -->
+      <div class="col-md-2">
+        <button class="btn btn-custom w-100 mb-3" id="chatbot-btn">AI Chatbot</button>
+        <button class="btn btn-custom w-100" id="api-key-btn">API Key Setup</button>
+      </div>
+
+      <!-- Right Column (4/5 for content) -->
+      <div class="col-md-10">
+        <div id="chatbot-section" class="d-block">
+          <!-- Chatbot Area -->
+          <div class="border p-4" id="chatbox">
+            <!-- Messages will appear here -->
+          </div>
+
+          <!-- Input Section -->
+          <div class="input-group mt-3 chat-input-container">
+            <input type="text" class="form-control" placeholder="Type your message..." id="chat-input">
+            <button class="btn btn-secondary" id="mic-btn" type="button">
+              <i class="bi bi-mic"></i>
+            </button>
+            <button class="btn btn-primary" id="send-btn" type="button">
+              <i class="bi bi-send"></i>
+            </button>
+          </div>
+          <div id="audio-visual" style="height: 50px; background-color: #f0f0f0; margin-top: 10px;"></div>
+        </div>
+
+        <div id="api-key-section" class="d-none">
+          <!-- API Key Setup Area -->
+          <div class="border p-4">
+            <div class="mb-3">
+              <label for="profile-name" class="form-label">Profile Name</label>
+              <input type="text" class="form-control" id="profile-name" placeholder="Enter Profile Name">
+            </div>
+            <div class="mb-3">
+              <label for="api-key" class="form-label">API Key</label>
+              <input type="text" class="form-control" id="api-key" placeholder="Enter API Key">
+            </div>
+          </div>
+
+          <!-- CURL URL Setup Area -->
+          <div class="border p-4 mt-3">
+            <label for="curl-url" class="form-label">CURL URL</label>
+            <input type="text" class="form-control" id="curl-url" placeholder="Enter CURL URL">
+          </div>
+
+          <!-- Save Button -->
+          <div class="mt-3">
+            <button class="btn btn-success" id="save-settings-btn">Save Settings</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- JavaScript to handle the page logic and API requests -->
+  <script>
+    let chatHistory = [];
+    let recognition;
+    let isListening = false;
+    let silenceTimer;
+    let audioContext;
+    let analyser;
+    let microphone;
+
+    // Load API Key and CURL URL from localStorage on page load
+    window.onload = function() {
+      const storedApiKey = localStorage.getItem('apiKey');
+      const storedCurlUrl = localStorage.getItem('curlUrl');
+      const savedChat = localStorage.getItem('chatHistory');
+
+      if (storedApiKey) {
+        document.getElementById('api-key').value = storedApiKey;
+      }
+
+      if (storedCurlUrl) {
+        document.getElementById('curl-url').value = storedCurlUrl;
+      }
+
+      if (savedChat) {
+        chatHistory = JSON.parse(savedChat);
+        displayChatHistory();
+      }
+    }
+
+    // Display chat history
+    function displayChatHistory() {
+      const chatbox = document.getElementById('chatbox');
+      chatbox.innerHTML = ''; // Clear chatbox
+      chatHistory.forEach(msg => {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message');
+        messageDiv.classList.add(msg.sender === 'user' ? 'user-message' : 'bot-message');
+        messageDiv.textContent = msg.content;
+        chatbox.appendChild(messageDiv);
+      });
+      scrollToBottom();
+    }
+
+    // Scroll to bottom of chatbox
+    function scrollToBottom() {
+      const chatbox = document.getElementById('chatbox');
+      chatbox.scrollTop = chatbox.scrollHeight;
+    }
+
+    // Save message to history
+    function saveMessage(sender, content) {
+      chatHistory.push({ sender, content });
+      localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+    }
+
+    // Switch between AI Chatbot and API Key Setup
+    document.getElementById('chatbot-btn').addEventListener('click', function() {
+      document.getElementById('chatbot-section').classList.remove('d-none');
+      document.getElementById('chatbot-section').classList.add('d-block');
+      document.getElementById('api-key-section').classList.remove('d-block');
+      document.getElementById('api-key-section').classList.add('d-none');
+    });
+
+    document.getElementById('api-key-btn').addEventListener('click', function() {
+      document.getElementById('chatbot-section').classList.remove('d-block');
+      document.getElementById('chatbot-section').classList.add('d-none');
+      document.getElementById('api-key-section').classList.remove('d-none');
+      document.getElementById('api-key-section').classList.add('d-block');
+    });
+
+    // Handle Save Settings button
+    document.getElementById('save-settings-btn').addEventListener('click', function() {
+      const apiKey = document.getElementById('api-key').value;
+      const curlUrl = document.getElementById('curl-url').value;
+
+      if (apiKey && curlUrl) {
+        // Save API Key and CURL URL to localStorage
+        localStorage.setItem('apiKey', apiKey);
+        localStorage.setItem('curlUrl', curlUrl);
+        alert('Settings saved successfully!');
+      } else {
+        alert('Please fill in both API Key and CURL URL.');
+      }
+    });
+
+    // Initialize speech recognition
+    if ('webkitSpeechRecognition' in window) {
+      recognition = new webkitSpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'zh-TW'; // 设置为中文
+
+      recognition.onstart = () => {
+        console.log('Speech recognition started');
+        document.getElementById('mic-btn').classList.add('btn-danger');
+        document.getElementById('mic-btn').innerHTML = '<i class="bi bi-mic-mute"></i>';
+      };
+
+      recognition.onend = () => {
+        console.log('Speech recognition ended');
+        stopListening();
+      };
+
+      recognition.onresult = (event) => {
+        const result = event.results[event.results.length - 1];
+        if (result.isFinal) {
+          document.getElementById('chat-input').value = result[0].transcript;
+          stopListening();
+          sendMessage(); // 自动发送识别的文本
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error', event.error);
+        alert('语音识别错误: ' + event.error);
+        stopListening();
+      };
+    } else {
+      console.log('Speech recognition not supported');
+      document.getElementById('mic-btn').style.display = 'none';
+    }
+
+    // Start listening for speech
+    async function startListening() {
+      if (!isListening && recognition) {
+        try {
+          console.log('Attempting to access microphone...');
+          // 检查是否已经有麦克风权限
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          
+          console.log('Microphone access granted, initializing audio...');
+          initAudio();
+          
+          console.log('Starting speech recognition...');
+          recognition.start();
+          isListening = true;
+          
+          console.log('Setting up audio processing...');
+          microphone = audioContext.createMediaStreamSource(stream);
+          microphone.connect(analyser);
+          visualize();
+          
+          console.log('Updating UI...');
+          document.getElementById('mic-btn').classList.add('btn-danger');
+          document.getElementById('mic-btn').innerHTML = '<i class="bi bi-mic-mute"></i>';
+          
+          console.log('Setting silence timer...');
+          silenceTimer = setTimeout(() => {
+            console.log('Silence detected, stopping listening...');
+            stopListening();
+          }, 3000);
+        } catch (err) {
+          console.error('Error in startListening:', err);
+          alert('无法访问麦克风。错误详情：' + err.message);
+          stopListening();
+        }
+      }
+    }
+
+    // Stop listening for speech
+    function stopListening() {
+      if (isListening && recognition) {
+        recognition.stop();
+        isListening = false;
+        document.getElementById('mic-btn').classList.remove('btn-danger');
+        document.getElementById('mic-btn').innerHTML = '<i class="bi bi-mic"></i>';
+        document.querySelector('#mic-btn i').classList.remove('mic-active');
+        clearTimeout(silenceTimer);
+        
+        if (microphone) {
+          microphone.disconnect();
+          microphone = null;
+        }
+        if (audioContext) {
+          audioContext.close().then(() => {
+            audioContext = null;
+            analyser = null;
+          });
+        }
+        
+        // Clear visualization
+        const canvas = document.getElementById('audio-visual');
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+
+    function initAudio() {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+      }
+    }
+
+    // Initialize audio context on page load
+    window.addEventListener('load', initAudio);
+
+    function visualize() {
+      if (!analyser || !isListening) {
+        console.log('Analyser not initialized or not listening');
+        return;
+      }
+
+      const canvas = document.getElementById('audio-visual');
+      const ctx = canvas.getContext('2d');
+      const WIDTH = canvas.width;
+      const HEIGHT = canvas.height;
+      const micIcon = document.querySelector('#mic-btn i');
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      function draw() {
+        if (!isListening) return;
+
+        requestAnimationFrame(draw);
+
+        try {
+          analyser.getByteFrequencyData(dataArray);
+
+          // Calculate volume
+          let volume = dataArray.reduce((acc, val) => acc + val, 0) / bufferLength;
+
+          console.log('Current volume:', volume);
+
+          // Update microphone icon
+          if (volume > 5) {
+            micIcon.classList.add('mic-active');
+            console.log('Mic active');
+          } else {
+            micIcon.classList.remove('mic-active');
+            console.log('Mic inactive');
+          }
+
+          // Draw visualization
+          ctx.fillStyle = 'rgb(200, 200, 200)';
+          ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+          const barWidth = (WIDTH / bufferLength) * 2.5;
+          let barHeight;
+          let x = 0;
+
+          for(let i = 0; i < bufferLength; i++) {
+            barHeight = dataArray[i] / 2;
+
+            ctx.fillStyle = `rgb(50, ${barHeight + 100}, 50)`;
+            ctx.fillRect(x, HEIGHT - barHeight / 2, barWidth, barHeight);
+
+            x += barWidth + 1;
+          }
+        } catch (error) {
+          console.error('Error in visualize function:', error);
+          stopListening();
+        }
+      }
+
+      draw();
+    }
+
+    // Add click event listener to the microphone button
+    document.getElementById('mic-btn').addEventListener('click', () => {
+      if (isListening) {
+        stopListening();
+      } else {
+        startListening();
+      }
+    });
+
+    // Modify sendMessage function to stop listening
+    function sendMessage() {
+      if (isListening) {
+        stopListening();
+      }
+      
+      const message = document.getElementById('chat-input').value.trim();
+      const apiKey = localStorage.getItem('apiKey');
+      const curlUrl = localStorage.getItem('curlUrl');
+
+      if (message && apiKey && curlUrl) {
+        // Save and display user message
+        saveMessage('user', message);
+        displayChatHistory();
+        scrollToBottom();
+
+        document.getElementById('chat-input').value = ''; // Clear the input field
+
+        const fullUrl = curlUrl + "?key=" + apiKey;
+        const requestBody = JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: message }
+              ]
+            }
+          ]
+        });
+
+        fetch(fullUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: requestBody
+        })
+        .then(response => response.json())
+        .then(data => {
+          console.log('API Response:', data);  // Log the full API response for debugging
+          let botResponse = "No valid response from API.";
+
+          if (data && data.candidates && data.candidates.length > 0) {
+            botResponse = data.candidates[0]['content']['parts'][0]['text'];
+          }
+
+          // Save and display bot response
+          saveMessage('bot', botResponse);
+          displayChatHistory();
+          scrollToBottom();
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          alert('Error sending the request.');
+        });
+      } else {
+        alert('Please fill in all required fields.');
+      }
+    }
+
+    // Add event listener to send button
+    document.getElementById('send-btn').addEventListener('click', sendMessage);
+
+    // Add event listener to input field for Enter key
+    document.getElementById('chat-input').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault(); // Prevent creating a new line in multi-line input
+        sendMessage();
+      }
+    });
+
+    // ... (其他 JavaScript 代码保持不变) ...
+  </script>
+</body>
+</html>

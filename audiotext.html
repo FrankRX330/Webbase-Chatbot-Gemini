@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>语音识别示例</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 50px;
+        }
+        #status {
+            margin: 20px 0;
+            font-size: 1.2em;
+        }
+        #transcript {
+            margin-top: 20px;
+            font-size: 1.5em;
+            color: #333;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>语音识别示例</h1>
+    <button id="start-btn">开始识别</button>
+    <button id="stop-btn" disabled>停止识别</button>
+    <div id="status">状态: 等待中...</div>
+    <div id="transcript"></div>
+
+    <script>
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const statusDiv = document.getElementById('status');
+        const transcriptDiv = document.getElementById('transcript');
+
+        let recognition;
+
+        // 检查浏览器是否支持语音识别
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = true; // 连续识别
+            recognition.interimResults = true; // 显示中间结果
+            recognition.lang = 'zh-TW'; // 设置语言为中文
+
+            recognition.onstart = () => {
+                statusDiv.textContent = '状态: 识别中...';
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+            };
+
+            recognition.onend = () => {
+                statusDiv.textContent = '状态: 等待中...';
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            };
+
+            recognition.onresult = (event) => {
+                let transcript = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                }
+                transcriptDiv.textContent = transcript; // 显示识别结果
+            };
+
+            recognition.onerror = (event) => {
+                console.error('语音识别错误:', event.error);
+                statusDiv.textContent = '状态: 识别错误';
+            };
+        } else {
+            alert('抱歉，您的浏览器不支持语音识别。请使用Chrome浏览器。');
+        }
+
+        startBtn.addEventListener('click', () => {
+            recognition.start(); // 开始识别
+        });
+
+        stopBtn.addEventListener('click', () => {
+            recognition.stop(); // 停止识别
+        });
+    </script>
+</body>
+</html>
